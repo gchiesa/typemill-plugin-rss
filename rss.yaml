@@ -1,8 +1,8 @@
 name: RSS
-version: 0.0.2
+version: 2.0.0
 description: Add RSS Feeds to Folders
-author: Andreas Zettl
-homepage: https://azettl.net
+author: Giuseppe Chiesa, Andreas Zettl
+homepage: https://g-c.dev
 licence: MIT
 
 forms:
@@ -20,4 +20,3 @@ forms:
       help: The description for the RSS Feed under yourpage.com/rss
       placeholder: 'My RSS Feed Description'
 
-    

@@ -2,15 +2,14 @@
 
 namespace Plugins\rss;
 
-use \Typemill\Models\WriteCache;
+use \Typemill\Models\StorageWrapper;
 
 class rssController
 {
-    public function __call($name, $arguments) 
+    public function __call($name, $arguments)
     {
-        $writeCache = new WriteCache();
-        $rssXml     = $writeCache->getCache('cache', $name . '.rss');
-
+        $storage = new StorageWrapper('\Typemill\Models\Storage');
+        $rssXml = $storage->getFile('cacheFolder', 'rss', $name . '.rss');
         header('Content-Type: text/xml');
         die(trim($rssXml));
     }

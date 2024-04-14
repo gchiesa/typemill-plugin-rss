@@ -3,9 +3,11 @@
 namespace Plugins\rss;
 
 use \Typemill\Plugin;
-use \Typemill\Models\WriteMeta;
-use \Typemill\Models\WriteCache;
-use \Typemill\Settings;
+use \Typemill\Models\Storage;
+use \Typemill\Models\Meta;
+use \Typemill\Models\Settings;
+use \Typemill\Models\StorageWrapper;
+use \Typemill\Models\Navigation;
 
 class rss extends Plugin
 {
@@ -14,121 +16,119 @@ class rss extends Plugin
     public static function getSubscribedEvents()
     {
         return array(
-			'onPagePublished'		=> 'onPagePublished',
-			'onPageUnpublished'		=> 'onPageUnpublished',
-			'onPageSorted'			=> 'onPageSorted',
-			'onPageDeleted'			=> 'onPageDeleted',
-            'onPageReady'           => 'onPageReady'
+            'onPagePublished' => 'onPagePublished',
+            'onPageUnpublished' => 'onPageUnpublished',
+            'onPageSorted' => 'onPageSorted',
+            'onPageDeleted' => 'onPageDeleted',
+            'onItemLoaded' => 'onItemLoaded'
         );
     }
 
-	# at any of theses events, delete the old rss cache files
-	public function onPagePublished($item)
-	{
-		$this->updateRssXmls();
-	}
-	public function onPageUnpublished($item)
-	{
-		$this->updateRssXmls();
-	}
-	public function onPageSorted($inputParams)
-	{
-		$this->updateRssXmls();
-	}
-	public function onPageDeleted($item)
-	{
-		$this->updateRssXmls();
-	}
-    public function onPageReady($pagedata)
+    # at any of theses events, delete the old rss cache files
+    public function onPagePublished($item)
     {
-        $data = $pagedata->getData();
+        $this->updateRssXmls();
+    }
 
-        if(isset($data['item']->folderContent) && is_array($data['item']->folderContent) && method_exists($this, 'addMeta'))
-        {
-            $this->addMeta('rss', '<link rel="alternate" type="application/rss+xml" title="' . $data['title'] . '" href="' . $data['item']->urlAbs . '/rss">');
+    public function onPageUnpublished($item)
+    {
+        $this->updateRssXmls();
+    }
+
+    public function onPageSorted($inputParams)
+    {
+        $this->updateRssXmls();
+    }
+
+    public function onPageDeleted($item)
+    {
+        $this->updateRssXmls();
+    }
+
+    public function onItemLoaded($itemService)
+    {
+        $item = $itemService->getData();
+        if ($item->elementType == 'folder') {
+            $this->addMeta('rss', '<link rel="alternate" type="application/rss+xml" title="' . $item->name . '" href="' . $item->urlAbs . '/rss">');
         }
     }
 
     public static function addNewRoutes()
     {
-        $routes = [];
-        
-        $writeCache = new WriteCache();
-        $navigation = $writeCache->getCache('cache', 'navigation.txt');
+        global $container;
 
-        foreach($navigation as $pageData){
-            if(isset($pageData->folderContent) && is_array($pageData->folderContent)){
+        $routes = [];
+        $navigationService = new Navigation();
+        $urlInfo = $container->get('urlinfo');
+        $settingsService = new Settings();
+        $settings = $settingsService->loadSettings();
+
+        $navigationLive = $navigationService->getLiveNavigation($urlInfo, $settings['langattr']);
+        foreach ($navigationLive as $item) {
+            if ($item->elementType == 'folder') {
                 $routes[] = [
-                    'httpMethod'    => 'get', 
-                    'route'         => $pageData->urlRelWoF . '/rss', 
-                    'class'         => 'Plugins\rss\rssController:' . $pageData->slug
+                    'httpMethod' => 'get',
+                    'route' => $item->urlRelWoF . '/rss',
+                    'class' => 'Plugins\rss\rssController:' . $item->slug,
+                    'name' => $item->slug
                 ];
             }
         }
-		
-		$routes[] = [
-			'httpMethod'    => 'get', 
-			'route'         => '/rss', 
-			'class'         => 'Plugins\rss\rssController:all'
-		];
-       
+        $routes[] = [
+            'httpMethod' => 'get',
+            'route' => '/rss',
+            'class' => 'Plugins\rss\rssController:all',
+            'name' => 'all'
+        ];
         return $routes;
     }
 
     private function updateRssXmls()
     {
-        $writeCache     = new WriteCache();
-        $settingsArray  = Settings::loadSettings();
-        $settings       = $settingsArray['settings'];
-        $navigation     = $writeCache->getCache('cache', 'navigation.txt');
-
-		$allItems = [];
-        foreach($navigation as $pageData){
-            if(isset($pageData->folderContent) && is_array($pageData->folderContent)){
-                # initiate object for metadata
-                $writeMeta = new WriteMeta();
-                $metadata  = $writeMeta->getPageMeta($settings, $pageData);
-
+        $storage = new StorageWrapper('\Typemill\Models\Storage');
+        $settingsService = new Settings();
+        $settings = $settingsService->loadSettings();
+        $navigationService = new Navigation();
+        $navigation = $navigationService->getLiveNavigation($this->urlinfo, $settings['langattr']);
+        $allItems = [];
+        foreach ($navigation as $page) {
+            if ($page->elementType == 'folder') {
+                $metaManager = new Meta();
+                $pageMeta = $metaManager->getMetadata($page);
                 $items = [];
-                foreach($pageData->folderContent as $childData){
-                    $childMetadata  = $writeMeta->getPageMeta($settings, $childData);
-
-                    $allItems[
-						($childMetadata['meta']['manualdate']) ? $childMetadata['meta']['manualdate'] . '-' . $childMetadata['meta']['time'] : $childMetadata['meta']['modified'] . '-' . $childMetadata['meta']['time']
-					] = $items[] = [
-                        'title'         => htmlspecialchars($childData->name, ENT_XML1),
-                        'link'          => $childData->urlAbs,
-                        'description'   => htmlspecialchars($childMetadata['meta']['description'], ENT_XML1)
+                foreach ($page->folderContent as $item) {
+                    $itemMeta = $metaManager->getMetadata($item);
+                    $entry = [
+                        'title' => htmlspecialchars($item->name, ENT_XML1),
+                        'link' => $item->urlAbs,
+                        'description' => htmlspecialchars($itemMeta['meta']['description'], ENT_XML1)
                     ];
+                    $allItems[(isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null) ? $itemMeta['meta']['manualdate'] . '-' . $itemMeta['meta']['time'] : $itemMeta['meta']['modified'] . '-' . $itemMeta['meta']['time']] = $items[] = $entry;
                 }
-                
                 $rssXml = $this->getRssXml(
-                    htmlspecialchars($pageData->name, ENT_XML1),
-                    $pageData->urlAbs,
-                    htmlspecialchars($metadata['meta']['description'], ENT_XML1),
+                    htmlspecialchars($page->name, ENT_XML1),
+                    $page->urlAbs,
+                    htmlspecialchars($pageMeta['meta']['description'], ENT_XML1),
                     $items
                 );
-
-                $writeCache->updateCache('cache', $pageData->slug . '.rss', false, $rssXml);
+                $storage->writeFile('cacheFolder', 'rss', $page->slug . '.rss', $rssXml);
             }
         }
-		
-		$uri = \Slim\Http\Uri::createFromEnvironment(new \Slim\Http\Environment($_SERVER))->withUserInfo('');
-		krsort($allItems);
-		$rssXml = $this->getRssXml(
-			htmlspecialchars($settings['plugins']['rss']['mainrsstitle'], ENT_XML1),
-			$uri->getBaseUrl(),
-			htmlspecialchars($settings['plugins']['rss']['mainrssdescription'], ENT_XML1),
-			$allItems
-		);
+        krsort($allItems);
+        $rssXml = $this->getRssXml(
+            htmlspecialchars($settings['plugins']['rss']['mainrsstitle'], ENT_XML1),
+            $this->urlinfo['baseurl'],
+            htmlspecialchars($settings['plugins']['rss']['mainrssdescription'], ENT_XML1),
+            $allItems
+        );
+        $storage->writeFile('cacheFolder', 'rss', 'all.rss', $rssXml);
 
-		$writeCache->updateCache('cache', 'all.rss', false, $rssXml);
     }
 
     private function getRssXml(string $title, string $link, string $description, array $items)
     {
         $itemsXml = '';
-        foreach($items as $item){
+        foreach ($items as $item) {
             $itemsXml .= '
                 <item>
                     <title>' . $item['title'] . '</title>
@@ -138,8 +138,7 @@ class rss extends Plugin
                 ';
         }
 
-        return '
-            <?xml version="1.0"?>
+        return '<?xml version="1.0"?>
             <rss version="2.0">
                 <channel>
                     <title>' . $title . '</title>
