@@ -98,10 +98,21 @@ class rss extends Plugin
                 $items = [];
                 foreach ($page->folderContent as $item) {
                     $itemMeta = $metaManager->getMetadata($item);
+                    if ($itemMeta['meta']['hide'])
+                        continue;
+
+                    $pubDate = $itemMeta['meta']['created'];
+                    if (isset($itemMeta['meta']['modified']) && $itemMeta['meta']['modified'] != null) {
+                        $pubDate = $itemMeta['meta']['modified'];
+                    }
+                    if (isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null) {
+                        $pubDate = $itemMeta['meta']['manualdate'];
+                    }
                     $entry = [
                         'title' => htmlspecialchars($item->name, ENT_XML1),
                         'link' => $item->urlAbs,
-                        'description' => htmlspecialchars($itemMeta['meta']['description'], ENT_XML1)
+                        'description' => htmlspecialchars($itemMeta['meta']['description'], ENT_XML1),
+                        'pubDate' => $this->createRssCompliantDate($pubDate, $itemMeta['meta']['time']),
                     ];
                     $allItems[(isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null) ? $itemMeta['meta']['manualdate'] . '-' . $itemMeta['meta']['time'] : $itemMeta['meta']['modified'] . '-' . $itemMeta['meta']['time']] = $items[] = $entry;
                 }
@@ -134,19 +145,29 @@ class rss extends Plugin
                     <title>' . $item['title'] . '</title>
                     <link>' . $item['link'] . '</link>
                     <description>' . $item['description'] . '</description>
+                    <pubDate>' . $item['pubDate'] . '</pubDate>
+                    <guid>' . $item['link'] . '</guid>
                 </item>
                 ';
         }
-
         return '<?xml version="1.0"?>
             <rss version="2.0">
                 <channel>
-                    <title>' . $title . '</title>
+                    <title>' . $title . '</title>                 
                     <link>' . $link . '</link>
                     <description>' . $description . '</description>
                     ' . $itemsXml . '
                 </channel>
             </rss>
         ';
+    }
+
+    private function createRssCompliantDate(string $metaYMS, string $metaHMS)
+    {
+        list($year, $month, $day) = explode("-", $metaYMS);
+        list($hour, $minute, $second) = explode("-", $metaHMS);
+        $timestamp = mktime($hour, $minute, $second, $month, $day, $year);
+        $formattedDate = gmdate("D, d M Y H:i:s \G\M\T", $timestamp);
+        return $formattedDate;
     }
 }
