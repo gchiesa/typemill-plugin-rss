@@ -16,11 +16,11 @@ class rss extends Plugin
     public static function getSubscribedEvents()
     {
         return array(
-            'onPagePublished' => 'onPagePublished',
+            'onPagePublished'   => 'onPagePublished',
             'onPageUnpublished' => 'onPageUnpublished',
-            'onPageSorted' => 'onPageSorted',
-            'onPageDeleted' => 'onPageDeleted',
-            'onItemLoaded' => 'onItemLoaded'
+            'onPageSorted'      => 'onPageSorted',
+            'onPageDeleted'     => 'onPageDeleted',
+            'onItemLoaded'      => 'onItemLoaded'
         );
     }
 
@@ -48,7 +48,8 @@ class rss extends Plugin
     public function onItemLoaded($itemService)
     {
         $item = $itemService->getData();
-        if ($item->elementType == 'folder') {
+        if ($item->elementType == 'folder')
+        {
             $this->addMeta('rss', '<link rel="alternate" type="application/rss+xml" title="' . $item->name . '" href="' . $item->urlAbs . '/rss">');
         }
     }
@@ -57,81 +58,98 @@ class rss extends Plugin
     {
         global $container;
 
-        $routes = [];
-        $navigationService = new Navigation();
-        $urlInfo = $container->get('urlinfo');
-        $settingsService = new Settings();
-        $settings = $settingsService->loadSettings();
+        $routes             = [];
+        $navigationService  = new Navigation();
+        $urlInfo            = $container->get('urlinfo');
+        $settingsService    = new Settings();
+        $settings           = $settingsService->loadSettings();
 
         $navigationLive = $navigationService->getLiveNavigation($urlInfo, $settings['langattr']);
-        foreach ($navigationLive as $item) {
-            if ($item->elementType == 'folder') {
+        foreach ($navigationLive as $item)
+        {
+            if ($item->elementType == 'folder')
+            {
                 $routes[] = [
-                    'httpMethod' => 'get',
-                    'route' => $item->urlRelWoF . '/rss',
-                    'class' => 'Plugins\rss\rssController:' . $item->slug,
-                    'name' => $item->slug
+                    'httpMethod'    => 'get',
+                    'route'         => $item->urlRelWoF . '/rss',
+                    'class'         => 'Plugins\rss\rssController:' . $item->slug,
+                    'name'          => $item->slug
                 ];
             }
         }
+
         $routes[] = [
-            'httpMethod' => 'get',
-            'route' => '/rss',
-            'class' => 'Plugins\rss\rssController:all',
-            'name' => 'all'
+            'httpMethod'    => 'get',
+            'route'         => '/rss',
+            'class'         => 'Plugins\rss\rssController:all',
+            'name'          => 'all'
         ];
+
         return $routes;
     }
 
     private function updateRssXmls()
     {
-        $storage = new StorageWrapper('\Typemill\Models\Storage');
-        $settingsService = new Settings();
-        $settings = $settingsService->loadSettings();
-        $navigationService = new Navigation();
-        $navigation = $navigationService->getLiveNavigation($this->urlinfo, $settings['langattr']);
-        $allItems = [];
-        foreach ($navigation as $page) {
-            if ($page->elementType == 'folder') {
-                $metaManager = new Meta();
-                $pageMeta = $metaManager->getMetadata($page);
-                $items = [];
-                foreach ($page->folderContent as $item) {
+        $storage            = new StorageWrapper('\Typemill\Models\Storage');
+        $settingsService    = new Settings();
+        $settings           = $settingsService->loadSettings();
+        $navigationService  = new Navigation();
+        $navigation         = $navigationService->getLiveNavigation($this->urlinfo, $settings['langattr']);
+        $allItems           = [];
+
+        foreach ($navigation as $page)
+        {
+            if ($page->elementType == 'folder')
+            {
+                $metaManager    = new Meta();
+                $pageMeta       = $metaManager->getMetadata($page);
+                $items          = [];
+                foreach ($page->folderContent as $item)
+                {
                     $itemMeta = $metaManager->getMetadata($item);
-                    if ($itemMeta['meta']['hide'])
+                    if (isset($itemMeta['meta']['hide']) && $itemMeta['meta']['hide'])
                         continue;
 
                     $pubDate = $itemMeta['meta']['created'];
-                    if (isset($itemMeta['meta']['modified']) && $itemMeta['meta']['modified'] != null) {
+                    if (isset($itemMeta['meta']['modified']) && $itemMeta['meta']['modified'] != null)
+                    {
                         $pubDate = $itemMeta['meta']['modified'];
                     }
-                    if (isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null) {
+                    if (isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null)
+                    {
                         $pubDate = $itemMeta['meta']['manualdate'];
                     }
                     $entry = [
-                        'title' => htmlspecialchars($item->name, ENT_XML1),
-                        'link' => $item->urlAbs,
-                        'description' => htmlspecialchars($itemMeta['meta']['description'], ENT_XML1),
-                        'pubDate' => $this->createRssCompliantDate($pubDate, $itemMeta['meta']['time']),
+                        'title'         => htmlspecialchars($item->name, ENT_XML1),
+                        'link'          => $item->urlAbs,
+                        'description'   => isset($itemMeta['meta']['description']) ? htmlspecialchars($itemMeta['meta']['description'], ENT_XML1) : '',
+                        'pubDate'       => $this->createRssCompliantDate($pubDate, $itemMeta['meta']['time']),
                     ];
                     $allItems[(isset($itemMeta['meta']['manualdate']) && $itemMeta['meta']['manualdate'] != null) ? $itemMeta['meta']['manualdate'] . '-' . $itemMeta['meta']['time'] : $itemMeta['meta']['modified'] . '-' . $itemMeta['meta']['time']] = $items[] = $entry;
                 }
+
+                $description = isset($itemMeta['meta']['description']) ? htmlspecialchars($itemMeta['meta']['description'], ENT_XML1) : '';
                 $rssXml = $this->getRssXml(
                     htmlspecialchars($page->name, ENT_XML1),
                     $page->urlAbs,
-                    htmlspecialchars($pageMeta['meta']['description'], ENT_XML1),
+                    $description,
                     $items
                 );
+
                 $storage->writeFile('cacheFolder', 'rss', $page->slug . '.rss', $rssXml);
             }
         }
         krsort($allItems);
+
+        $maintitle          = isset($settings['plugins']['rss']['mainrsstitle']) ? htmlspecialchars($settings['plugins']['rss']['mainrsstitle'], ENT_XML1) : '';
+        $maindescription    = isset($settings['plugins']['rss']['mainrssdescription']) ? htmlspecialchars($settings['plugins']['rss']['mainrssdescription'], ENT_XML1) : '';
         $rssXml = $this->getRssXml(
-            htmlspecialchars($settings['plugins']['rss']['mainrsstitle'], ENT_XML1),
+            $maintitle,
             $this->urlinfo['baseurl'],
-            htmlspecialchars($settings['plugins']['rss']['mainrssdescription'], ENT_XML1),
+            $maindescription,
             $allItems
         );
+        
         $storage->writeFile('cacheFolder', 'rss', 'all.rss', $rssXml);
 
     }
